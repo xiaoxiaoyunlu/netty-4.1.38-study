@@ -81,6 +81,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         this.ch = ch;
         this.readInterestOp = readInterestOp;
         try {
+            // //原来设置非阻塞模式是在这里设置的啊
             ch.configureBlocking(false);
         } catch (IOException e) {
             try {
@@ -377,8 +378,14 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     @Override
     protected void doRegister() throws Exception {
         boolean selected = false;
+        //自旋操作，看看哪里返回出来的？
         for (;;) {
             try {
+                // 在给定的Selector上面注册该Channel，操作值为0，并返回selectionkey
+                //类似于NIO里面的 channel.register(selector,SelectionKey,OP_ACCEPT);
+                //  动作的代码为0？就是先注册上，啥也不干
+                // this.就是当前NioServerSocketChannel
+                // register() 是 NIO 里面的原生方法
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {

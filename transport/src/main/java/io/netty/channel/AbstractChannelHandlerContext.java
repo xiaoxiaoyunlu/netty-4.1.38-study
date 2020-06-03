@@ -135,17 +135,22 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return name;
     }
 
+    // 触发 channel 注册
     @Override
     public ChannelHandlerContext fireChannelRegistered() {
+        // 注册
         invokeChannelRegistered(findContextInbound(MASK_CHANNEL_REGISTERED));
         return this;
     }
 
     static void invokeChannelRegistered(final AbstractChannelHandlerContext next) {
+        //  EventLoop
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+            // 当前线程
             next.invokeChannelRegistered();
         } else {
+            // 非当前线程，添加注册任务去处理
             executor.execute(new Runnable() {
                 @Override
                 public void run() {
@@ -482,9 +487,11 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             return promise;
         }
 
+        // 获取bind对应的 ChannelHandlerContext
         final AbstractChannelHandlerContext next = findContextOutbound(MASK_BIND);
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+            //  继续 跟踪 绑定 invokeBind
             next.invokeBind(localAddress, promise);
         } else {
             safeExecute(executor, new Runnable() {
@@ -500,11 +507,14 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private void invokeBind(SocketAddress localAddress, ChannelPromise promise) {
         if (invokeHandler()) {
             try {
+                // 主要的方法  hander().bind()
+                // 注意  bind() 调用的是io.netty.channel.DefaultChannelPipeline.HeadContext.bind
                 ((ChannelOutboundHandler) handler()).bind(this, localAddress, promise);
             } catch (Throwable t) {
                 notifyOutboundHandlerException(t, promise);
             }
         } else {
+            // 递归 绑定
             bind(localAddress, promise);
         }
     }
@@ -913,6 +923,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     private AbstractChannelHandlerContext findContextInbound(int mask) {
+        //循环遍历链表 查找对应的ChannelContext
         AbstractChannelHandlerContext ctx = this;
         do {
             ctx = ctx.next;
@@ -985,8 +996,14 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
      * This is needed as {@link DefaultChannelPipeline} may already put the {@link ChannelHandler} in the linked-list
      * but not called {@link ChannelHandler#handlerAdded(ChannelHandlerContext)}.
      */
+    //当一个处理器还没有调用HandlerAdded方法时，只有处理器的执行线程是非顺序线程池的实例才能执行业务处理逻辑；
+    // 否则必须等待已调用handlerAdded方法，才能处理业务逻辑。这部分的处理，保证了ChannelPipeline的线程安全性，
+    // 由此用户可以随意增加删除Handler。
+    //notifyHandlerException方法对处理过程中出现的异常进行处理：
+    //invokeHandler决定是否调用处理器，进行业务逻辑处理：
     private boolean invokeHandler() {
         // Store in local variable to reduce volatile reads.
+        // handlerState为volatile变量，存储为本地变量，以便减少volatile读
         int handlerState = this.handlerState;
         return handlerState == ADD_COMPLETE || (!ordered && handlerState == ADD_PENDING);
     }

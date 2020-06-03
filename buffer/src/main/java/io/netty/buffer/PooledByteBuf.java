@@ -77,7 +77,7 @@ abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
      */
     final void reuse(int maxCapacity) {
         maxCapacity(maxCapacity);
-        resetRefCnt();
+        resetRefCnt();  // 引用计数
         setIndex0(0, 0);
         discardMarks();
     }

@@ -45,6 +45,7 @@ public class DefaultServerSocketChannelConfig extends DefaultChannelConfig
     /**
      * Creates a new instance.
      */
+    // 包装的是原生的java.net.ServerSocket?
     public DefaultServerSocketChannelConfig(ServerSocketChannel channel, ServerSocket javaSocket) {
         super(channel);
         if (javaSocket == null) {

@@ -184,6 +184,7 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
             return emptyBuf;
         }
         validate(initialCapacity, maxCapacity);
+        // 抽象方法，模板设计
         return newDirectBuffer(initialCapacity, maxCapacity);
     }
 

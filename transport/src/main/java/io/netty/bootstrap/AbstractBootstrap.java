@@ -98,6 +98,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * You either use this or {@link #channelFactory(io.netty.channel.ChannelFactory)} if your
      * {@link Channel} implementation has no no-args constructor.
      */
+    // 使用工厂模式， 构造一个 channel boss使用的
     public B channel(Class<? extends C> channelClass) {
         return channelFactory(new ReflectiveChannelFactory<C>(
                 ObjectUtil.checkNotNull(channelClass, "channelClass")
@@ -163,6 +164,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * Allow to specify a {@link ChannelOption} which is used for the {@link Channel} instances once they got
      * created. Use a value of {@code null} to remove a previous set {@link ChannelOption}.
      */
+    // 主要给 ServerSockerChannel 设置 tcp 参数
     public <T> B option(ChannelOption<T> option, T value) {
         ObjectUtil.checkNotNull(option, "option");
         if (value == null) {
@@ -267,8 +269,11 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         return doBind(ObjectUtil.checkNotNull(localAddress, "localAddress"));
     }
 
+    //真正的 bind 入口
     private ChannelFuture doBind(final SocketAddress localAddress) {
+        //1.  看方法名字，就知道是初始化和注册动作
         final ChannelFuture regFuture = initAndRegister();
+        //
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
             return regFuture;
@@ -277,6 +282,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
+            // 真正的绑定入口
             doBind0(regFuture, channel, localAddress, promise);
             return promise;
         } else {
@@ -306,7 +312,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
+            //1.  初始化 Channel 通道，通过工厂模式
+            //ReflectiveChannelFactory.newChannel
             channel = channelFactory.newChannel();
+            //2.  初始化 channel  模板方法，ServerBootStrap
             init(channel);
         } catch (Throwable t) {
             if (channel != null) {
@@ -319,6 +328,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
+        //3.将NioServerSocketChannel注册到ServerBootstrap的EventLoopGroup上
+        // config() 返回的是`ServerBootstrapConfig`，思考是哪里初始化使用的？
+        // group()  返回当前ServerBootStrap的EventLoopGroup
+        // register()----思考具体是实现是哪个？
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
@@ -345,13 +358,15 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     private static void doBind0(
             final ChannelFuture regFuture, final Channel channel,
             final SocketAddress localAddress, final ChannelPromise promise) {
-
+        // 这里 直接用线程池里面的线程去绑定的IP和端口？
         // This method is invoked before channelRegistered() is triggered.  Give user handlers a chance to set up
         // the pipeline in its channelRegistered() implementation.
         channel.eventLoop().execute(new Runnable() {
             @Override
             public void run() {
                 if (regFuture.isSuccess()) {
+                    // 继续跟踪  绑定入口
+                    // 思考一下：`workGroup`主要都做哪些操作？绑定？ 注册？ 分发？ 监控？ 鉴权？ 日志？ SSL？
                     channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
                 } else {
                     promise.setFailure(regFuture.cause());
@@ -442,6 +457,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     private static void setChannelOption(
             Channel channel, ChannelOption<?> option, Object value, InternalLogger logger) {
         try {
+            // 注意  channel.config()  ServerSockerChannel  跟踪进去分析
             if (!channel.config().setOption((ChannelOption<Object>) option, value)) {
                 logger.warn("Unknown channel option '{}' for channel '{}'", option, channel);
             }

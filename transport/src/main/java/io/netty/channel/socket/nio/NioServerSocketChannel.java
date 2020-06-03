@@ -50,6 +50,9 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(NioServerSocketChannel.class);
 
+    // `Java nio` 的 `ServerSocketChannel` 已经存在了，和底层操作系统实现有关，怎么和Netty里面的关联上呢？
+    // 所以的持有 java nio ServerSocketChannel 类似于代理设计模式
+    // 注意，这里返回的是 java.nio.ServerSocketChannel，而不是netty的
     private static ServerSocketChannel newSocket(SelectorProvider provider) {
         try {
             /**
@@ -84,8 +87,10 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
     /**
      * Create a new instance using the given {@link ServerSocketChannel}.
      */
+    // 构造函数，查看实现
     public NioServerSocketChannel(ServerSocketChannel channel) {
         super(null, channel, SelectionKey.OP_ACCEPT);
+        // 看到 `javaChannel().socket()`有木有很熟悉洗，这是服务端代码，会不会返回的是`ServerSocket`？
         config = new NioServerSocketChannelConfig(this, javaChannel().socket());
     }
 
@@ -128,11 +133,17 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 
     @Override
     protected void doBind(SocketAddress localAddress) throws Exception {
+        //注意无论什么版本，这里的javaChannel()返回的是底层的java nio  ServerSocketChannel
         if (PlatformDependent.javaVersion() >= 7) {
+            //调用的是`ServerSocketChannelImpl.bind()`，是底层操作系统层面的操作
             javaChannel().bind(localAddress, config.getBacklog());
         } else {
+            //也是走的底层`ServerSocketChannelImpl`,不过是先获取的`ServerSocket`在`bind()`
             javaChannel().socket().bind(localAddress, config.getBacklog());
         }
+        //总结 	 `java nio` 原生的`ServerSocketChannel` 是底层实现，
+        // 而`netty`也定义了自己的`ServerSocketChannel`，其实就是对原生java nio
+        // ServerSocketChanenl的封装处理
     }
 
     @Override

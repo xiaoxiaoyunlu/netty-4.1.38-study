@@ -169,13 +169,13 @@ public final class DefaultChannelId implements ChannelId {
         // processId
         i = writeInt(i, PROCESS_ID);
 
-        // sequence
+        // sequence  可以统计多少个Channel?
         i = writeInt(i, nextSequence.getAndIncrement());
 
         // timestamp (kind of)
         i = writeLong(i, Long.reverse(System.nanoTime()) ^ System.currentTimeMillis());
 
-        // random
+        // random  ThreadLocalRandom
         int random = PlatformDependent.threadLocalRandom().nextInt();
         i = writeInt(i, random);
         assert i == data.length;

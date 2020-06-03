@@ -89,11 +89,13 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      */
     private boolean registered;
 
+    //构造 责任链 ChannelPipeline
     protected DefaultChannelPipeline(Channel channel) {
         this.channel = ObjectUtil.checkNotNull(channel, "channel");
         succeededFuture = new SucceededChannelFuture(channel, null);
         voidPromise =  new VoidChannelPromise(channel, true);
 
+        //两个都是AbstractChannelHandlerContext的子类，参与双向链表
         tail = new TailContext(this);
         head = new HeadContext(this);
 
@@ -981,9 +983,11 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
+        // 绑定的时候 为什么是  tail.bind()
         return tail.bind(localAddress, promise);
     }
 
+    // 客户端调用的 bootstrap.connect()
     @Override
     public final ChannelFuture connect(SocketAddress remoteAddress, ChannelPromise promise) {
         return tail.connect(remoteAddress, promise);
@@ -1342,6 +1346,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         @Override
         public void bind(
                 ChannelHandlerContext ctx, SocketAddress localAddress, ChannelPromise promise) {
+            // 调用的是io.netty.channel.AbstractChannel.AbstractUnsafe.bind
             unsafe.bind(localAddress, promise);
         }
 

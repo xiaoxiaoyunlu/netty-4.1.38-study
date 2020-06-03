@@ -93,6 +93,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      * (after the acceptor accepted the {@link Channel}). Use a value of {@code null} to remove a previous set
      * {@link ChannelOption}.
      */
+    // 主要给SockerChannel 设置 tcp 参数
     public <T> ServerBootstrap childOption(ChannelOption<T> childOption, T value) {
         ObjectUtil.checkNotNull(childOption, "childOption");
         if (value == null) {
@@ -129,27 +130,42 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return this;
     }
 
+    // Channel 初始化
+    // 使用  同步代码块synchronized
+    // Netty在高并发处理过程中，是可以根据系统负载，动态配置合适的策略（调整TCP参数)的，
+    // 所以设置这些参数的时候，必须要加锁控制
     @Override
     void init(Channel channel) throws Exception {
+        // 处理 ChannelOption
         final Map<ChannelOption<?>, Object> options = options0();
+        // 注意，同步方法
         synchronized (options) {
+            //注意。这里面 调用到了 ServerSocketChannel.config()
+
             setChannelOptions(channel, options, logger);
         }
 
+        //处理 AttributeKey
+        // AbstractBootStrap.attr();
         final Map<AttributeKey<?>, Object> attrs = attrs0();
         synchronized (attrs) {
             for (Entry<AttributeKey<?>, Object> e: attrs.entrySet()) {
                 @SuppressWarnings("unchecked")
                 AttributeKey<Object> key = (AttributeKey<Object>) e.getKey();
+                //最后，其实是作为Channel的附件形式存放的
+                //netty3.x里面这个属性是单独配置的，netty.4.x版本才作为Channel的附件，增强功能
                 channel.attr(key).set(e.getValue());
             }
         }
-
+        // 处理 ChannelPiple
         ChannelPipeline p = channel.pipeline();
 
         final EventLoopGroup currentChildGroup = childGroup;
+        // 获取当前ServerBootStrap里面的ChannelHandler
         final ChannelHandler currentChildHandler = childHandler;
+        // 获取当前ServerBootStrap里面的ChannelOption
         final Entry<ChannelOption<?>, Object>[] currentChildOptions;
+        // 获取当前ServerBootStrap里面的AttributeKey
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs;
         synchronized (childOptions) {
             currentChildOptions = childOptions.entrySet().toArray(newOptionArray(0));
@@ -167,6 +183,9 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                     pipeline.addLast(handler);
                 }
 
+                // 初始化的时候，ServerBootstrapAcceptor 特殊的handler 前台接客的
+                // 每当有一个客户端连接进来后，会先进入到ServerBootstrapAcceptor的channelRead(ChannelHandlerContext ctx, Object msg)方法
+                // ch.eventLoop()
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
@@ -201,6 +220,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return new Map.Entry[size];
     }
 
+    // 其实就是 Server 端的  handler
     private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
 
         private final EventLoopGroup childGroup;
@@ -230,11 +250,14 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             };
         }
 
+        // 前台接客入口
         @Override
         @SuppressWarnings("unchecked")
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
+            // 客户端的 NioSocketChannel
             final Channel child = (Channel) msg;
 
+            //这里的  ServerBootstrap.childHandler
             child.pipeline().addLast(childHandler);
 
             setChannelOptions(child, childOptions, logger);
@@ -244,6 +267,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             }
 
             try {
+                // childGroup  就是 workGroup.
+                // 完成客户端 NioSocketChannel的注册工作
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {

@@ -73,6 +73,7 @@ public abstract class AbstractServerChannel extends AbstractChannel implements S
         throw new UnsupportedOperationException();
     }
 
+    //很重要的 ，`AbstractChannelHandlerContext.connect()`调用
     private final class DefaultServerUnsafe extends AbstractUnsafe {
         @Override
         public void connect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise) {

@@ -332,9 +332,12 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
         return toLeakAwareBuffer(buf);
     }
 
+    // 池化  分配 直接内容  ByteBuffer
     @Override
     protected ByteBuf newDirectBuffer(int initialCapacity, int maxCapacity) {
+        // 从Cache中获取内存区域 PoolArena
         PoolThreadCache cache = threadCache.get();
+        //PoolThreadCache中包括directArena 和  heapArena
         PoolArena<ByteBuffer> directArena = cache.directArena;
 
         final ByteBuf buf;

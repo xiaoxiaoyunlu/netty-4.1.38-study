@@ -67,10 +67,15 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      * @param parent
      *        the parent of this channel. {@code null} if there's no parent.
      */
+    // AbstractChannel`是netty中核心的顶级`Channel`的子类，很重要
+    //这个parent是`NioSocketChannel`传进来的null?  客户端的？
     protected AbstractChannel(Channel parent) {
         this.parent = parent;
+        //   生成唯一的channelId
         id = newId();
+        // 使用 底层的 UnSafe
         unsafe = newUnsafe();
+        // DefaultChannelPipeline
         pipeline = newChannelPipeline();
     }
 
@@ -422,6 +427,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         private boolean neverRegistered = true;
 
         private void assertEventLoop() {
+            // 前面  registered 已经 是  true了
             assert !registered || eventLoop.inEventLoop();
         }
 
@@ -462,12 +468,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         new IllegalStateException("incompatible event loop type: " + eventLoop.getClass().getName()));
                 return;
             }
-
+            //先绑定一个EventLoop
             AbstractChannel.this.eventLoop = eventLoop;
-
+            // 判断是否是当前线程持有的EventLoop，是的话，就直接register
             if (eventLoop.inEventLoop()) {
+                // 真正的注册入口
                 register0(promise);
             } else {
+                // 不是当前线程持有的EventLoop，就重新开个线程去注册？
                 try {
                     eventLoop.execute(new Runnable() {
                         @Override
@@ -493,7 +501,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 if (!promise.setUncancellable() || !ensureOpen(promise)) {
                     return;
                 }
+                //是否从未被注册 也就是第一次注册
                 boolean firstRegistration = neverRegistered;
+                // 真正入口  注册  AbstractNioChannel
                 doRegister();
                 neverRegistered = false;
                 registered = true;
@@ -503,6 +513,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 pipeline.invokeHandlerAddedIfNeeded();
 
                 safeSetSuccess(promise);
+                // 触发注册事件
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
@@ -525,8 +536,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        // AbstractChannel.bind  算是走到了 最后的bind逻辑
         @Override
         public final void bind(final SocketAddress localAddress, final ChannelPromise promise) {
+            // 判断当前是否是当前线程 或者  是否已注册
             assertEventLoop();
 
             if (!promise.setUncancellable() || !ensureOpen(promise)) {
@@ -546,8 +559,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         "address (" + localAddress + ") anyway as requested.");
             }
 
+            // 首次肯定是没有激活的  是 false
             boolean wasActive = isActive();
             try {
+                // 真正的绑定，涉及到的底层NIO
+                // NioServerSocketChannel.doBind()
                 doBind(localAddress);
             } catch (Throwable t) {
                 safeSetFailure(promise, t);
@@ -555,10 +571,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 绑定完成，如果还是没激活，则调用 eventloop里面的线程去触发ChannelPiple.fireChannelActive激活事件
             if (!wasActive && isActive()) {
                 invokeLater(new Runnable() {
                     @Override
                     public void run() {
+                        // 激活事件的真正动作是chanelActive() 这需要我们自己去实现的
                         pipeline.fireChannelActive();
                     }
                 });
