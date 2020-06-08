@@ -68,10 +68,12 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
      *                      {@link #exceptionCaught(ChannelHandlerContext, Throwable)} which will by default close
      *                      the {@link Channel}.
      */
+    // 模板方法，子类实现业务 handler
     protected abstract void initChannel(C ch) throws Exception;
 
     @Override
     @SuppressWarnings("unchecked")
+    // 这个方法在 在 channel 需要注册的时候 会调用
     public final void channelRegistered(ChannelHandlerContext ctx) throws Exception {
         // Normally this method will never be called as handlerAdded(...) should call initChannel(...) and remove
         // the handler.
@@ -122,6 +124,7 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
         initMap.remove(ctx);
     }
 
+    // 这个方法在 channelRegistered 中被调用,模板方法
     @SuppressWarnings("unchecked")
     private boolean initChannel(ChannelHandlerContext ctx) throws Exception {
         if (initMap.add(ctx)) { // Guard against re-entrance.
@@ -134,6 +137,9 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
             } finally {
                 ChannelPipeline pipeline = ctx.pipeline();
                 if (pipeline.context(this) != null) {
+                    // 这个 ChannelInitial 也是一个 ChannelHandler
+                    //但是 他的职责是 注册 自定义的 ChannelHandler， 所以，最后要把自己删除，没有意义了
+                    // 好比 自己先占个坑，把小弟们都接上 ，然后我自己离开
                     pipeline.remove(this);
                 }
             }

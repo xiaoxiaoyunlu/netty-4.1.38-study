@@ -56,6 +56,7 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
                                     boolean addTaskWakesUp, int maxPendingTasks,
                                     RejectedExecutionHandler rejectedExecutionHandler) {
         super(parent, executor, addTaskWakesUp, maxPendingTasks, rejectedExecutionHandler);
+        // 初始化任务队列，一个EventLoop 就是一个带有任务队列的单线程池
         tailTasks = newTaskQueue(maxPendingTasks);
     }
 

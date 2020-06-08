@@ -202,7 +202,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         final AbstractChannelHandlerContext newCtx;
         synchronized (this) {
             checkMultiplicity(handler);
-
+        //为了添加一个 `handler` 到 `pipeline` 中，
+            // 必须把此 handler 包装成 `ChannelHandlerContext`。
+            // 因此在上面的代码中我们可以看到新实例化了一个` newCtx `对象，
+            // 并将 `handler `作为参数传递到构造方法中
             newCtx = newContext(group, filterName(name, handler), handler);
 
             addLast0(newCtx);
@@ -821,8 +824,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return buf.toString();
     }
 
+    // 这里才是  真正的自定义handler 调用注册的地方
     @Override
     public final ChannelPipeline fireChannelRegistered() {
+        // 从头 head  找 inbound
         AbstractChannelHandlerContext.invokeChannelRegistered(head);
         return this;
     }
@@ -945,6 +950,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return this;
     }
 
+
     @Override
     public final ChannelFuture bind(SocketAddress localAddress) {
         return tail.bind(localAddress);
@@ -990,6 +996,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     // 客户端调用的 bootstrap.connect()
     @Override
     public final ChannelFuture connect(SocketAddress remoteAddress, ChannelPromise promise) {
+        // 客户端链接 connect的时候  用的还是  tail.connect
         return tail.connect(remoteAddress, promise);
     }
 
@@ -1355,6 +1362,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
                 ChannelHandlerContext ctx,
                 SocketAddress remoteAddress, SocketAddress localAddress,
                 ChannelPromise promise) {
+            // 调用  unsafe.connect();
+            //io.netty.channel.nio.AbstractNioChannel.AbstractNioUnsafe.connect
             unsafe.connect(remoteAddress, localAddress, promise);
         }
 

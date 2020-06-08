@@ -172,6 +172,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                                         RejectedExecutionHandler rejectedHandler) {
         super(parent);
         this.addTaskWakesUp = addTaskWakesUp;
+        // 任务队列的最大限制，小于16 则按照16算，大于则按照传入的算
         this.maxPendingTasks = DEFAULT_MAX_PENDING_EXECUTOR_TASKS;
         this.executor = ThreadExecutorMap.apply(executor, this);
         this.taskQueue = ObjectUtil.checkNotNull(taskQueue, "taskQueue");
@@ -192,6 +193,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * calls on the this {@link Queue} it may make sense to {@code @Override} this and return some more performant
      * implementation that does not support blocking operations at all.
      */
+    // 就是一个阻塞链表
     protected Queue<Runnable> newTaskQueue(int maxPendingTasks) {
         return new LinkedBlockingQueue<Runnable>(maxPendingTasks);
     }
@@ -499,6 +501,17 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
     }
 
+    //EventExecutor中最关键的是inEventLoop方法，
+    // 用于判断一个线程是否是EventExecutor内部那个线程，
+    // EventExecutor和EventLoop都是单线程实现。
+    // inEventLoop的主要使用场景是，当IO变化时，通过channel关联的pipeline会触发对应的事件，
+    // 这些事件对应的执行pipeline中的处理链中handler的回调方法，
+    // 每个handler添加到pipeline都可以指定自己的EventLoop，
+    // 如果没指定，默认使用要添加的pipeline关联的channel注册到的EventLoopGroup中的某个EventLoop。
+    // 所以channel通过pipeline调用handler时，
+    // 如果handler没有单独指定EventLoop，那inEventLoop就会返回true，他俩由同一个线程处理，直接调用handler。
+    // 如果handler单独指定了EventLoop，inEventLoop就会返回false，channel调用handler时就把要调用的方法封装到Runnable里，然后添加到handler指定的EventLoop的任务队列里，稍后会由对应的EventLoop中的线程执行。
+
     @Override
     public boolean inEventLoop(Thread thread) {
         return thread == this.thread;
@@ -756,15 +769,20 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         return isTerminated();
     }
 
+    //在 execute()主要就是创建线程，将线程添加到 EventLoop 的无锁化串行任务队列
     @Override
     public void execute(Runnable task) {
         if (task == null) {
             throw new NullPointerException("task");
         }
 
+        // 判断是否是当前线程
         boolean inEventLoop = inEventLoop();
+        // 之前的版本是 是当前线程，才会直接添加任务，
+        //新版本  添加任务，无论是不是当前线程？
         addTask(task);
         if (!inEventLoop) {
+            // 如果不是当前线程？
             startThread();
             if (isShutdown()) {
                 boolean reject = false;
@@ -868,6 +886,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private static final long SCHEDULE_PURGE_INTERVAL = TimeUnit.SECONDS.toNanos(1);
 
+    //
     private void startThread() {
         if (state == ST_NOT_STARTED) {
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {

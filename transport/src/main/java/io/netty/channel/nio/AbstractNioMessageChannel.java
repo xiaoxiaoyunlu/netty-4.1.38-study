@@ -55,16 +55,23 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
         super.doBeginRead();
     }
 
+    // 服务端 的   unsafe
     private final class NioMessageUnsafe extends AbstractNioUnsafe {
-
+        // 用于保存新建立的 NioSocketChannel 的集合
         private final List<Object> readBuf = new ArrayList<Object>();
 
         @Override
         public void read() {
+            // 确保在当前线程与EventLoop中的一致
             assert eventLoop().inEventLoop();
+            // 获取 NioServerSocketChannel config配置
             final ChannelConfig config = config();
+            // 获取 NioServerSocketChannel 绑定的 pipeline
             final ChannelPipeline pipeline = pipeline();
+            // 获取RecvByteBuf 分配器 Handle
+            // 当channel在接收数据时，allocHandle 会用于分配ByteBuf来保存数据
             final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
+            // 重置已累积的所有计数器，并为下一个读取循环读取多少消息/字节数据提供建议
             allocHandle.reset(config);
 
             boolean closed = false;
@@ -72,6 +79,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             try {
                 try {
                     do {
+                        // 调用后面的 doReadMessages 接口，读取到message则返回1
                         int localRead = doReadMessages(readBuf);
                         if (localRead == 0) {
                             break;
@@ -80,20 +88,26 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                             closed = true;
                             break;
                         }
-
+                        // 对当前read循环所读取到的message数量计数+1
                         allocHandle.incMessagesRead(localRead);
+                        // 判断是否继续读取message
+                        // DefaultMaxMessagesRecvByteBufAllocator
                     } while (allocHandle.continueReading());
                 } catch (Throwable t) {
                     exception = t;
                 }
 
+                // 传播 read 事件
                 int size = readBuf.size();
                 for (int i = 0; i < size; i ++) {
                     readPending = false;
+                    // 调用pipeline传播ChannelRead事件
                     pipeline.fireChannelRead(readBuf.get(i));
                 }
+                // 清空readBuf
                 readBuf.clear();
                 allocHandle.readComplete();
+                // 调用pipeline传播 ChannelReadComplete 事件
                 pipeline.fireChannelReadComplete();
 
                 if (exception != null) {

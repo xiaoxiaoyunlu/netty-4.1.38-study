@@ -235,11 +235,13 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
         return promise;
     }
 
+    // Netty 客户端链接  入口代码
     private static void doConnect(
             final SocketAddress remoteAddress, final SocketAddress localAddress, final ChannelPromise connectPromise) {
 
         // This method is invoked before channelRegistered() is triggered.  Give user handlers a chance to set up
         // the pipeline in its channelRegistered() implementation.
+        //Channel 的具体类型实际就是NioSocketChannel，
         final Channel channel = connectPromise.channel();
         channel.eventLoop().execute(new Runnable() {
             @Override

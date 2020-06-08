@@ -31,14 +31,23 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
     @SuppressWarnings("unchecked")
     @Override
+    //在计算机底层，&与比%运算效率更高
     public EventExecutorChooser newChooser(EventExecutor[] executors) {
         if (isPowerOfTwo(executors.length)) {
+            //  2 的 n 次方，则 可以使用  & 判断
             return new PowerOfTwoEventExecutorChooser(executors);
         } else {
+            //  常规取法  则使用  % 取模，效率低
             return new GenericEventExecutorChooser(executors);
         }
     }
 
+    // 判断是不是2的n次幂
+    // 整数的反码  补码 和  原码相等
+    // 负数的 反码   符号位不变，其他的取反    补码： 反码+1
+    // 7   111    -7 以原码的补码形式表现， 所以是11111111111111111111111111111001
+    //  8   1000   -8 以原码的补码形式表现， 所以是11111111111111111111111111111000
+    // 所以是2的n次幂，则(val & -val) == val
     private static boolean isPowerOfTwo(int val) {
         return (val & -val) == val;
     }
@@ -53,6 +62,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // 使用 &  效率高
             return executors[idx.getAndIncrement() & executors.length - 1];
         }
     }
@@ -67,6 +77,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // 使用  取模 % 效率低
             return executors[Math.abs(idx.getAndIncrement() % executors.length)];
         }
     }

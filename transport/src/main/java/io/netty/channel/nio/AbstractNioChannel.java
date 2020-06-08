@@ -248,6 +248,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                 }
 
                 boolean wasActive = isActive();
+                // doConnect 主要方法
                 if (doConnect(remoteAddress, localAddress)) {
                     fulfillConnectPromise(promise, wasActive);
                 } else {
@@ -408,18 +409,26 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         eventLoop().cancel(selectionKey());
     }
 
+
     @Override
     protected void doBeginRead() throws Exception {
         // Channel.read() or ChannelHandlerContext.read() was called
+        // 保存selectionKey到局部变量
         final SelectionKey selectionKey = this.selectionKey;
+        // 判断有效性
         if (!selectionKey.isValid()) {
             return;
         }
 
         readPending = true;
-
+        // 获取selectionKey的兴趣集
+        // 前面小结分析doRegister()接口提到，selectionKey的兴趣集设置为0
         final int interestOps = selectionKey.interestOps();
+        // 这里的 readInterestOp 是前面讲NioSocketChannel创建时设置的值
+        // 为 SelectionKey.OP_READ，也就是1
         if ((interestOps & readInterestOp) == 0) {
+            // 这样，selectionKey最终设置的兴趣集为SelectionKey.OP_READ
+            // 表示对读事件感兴趣
             selectionKey.interestOps(interestOps | readInterestOp);
         }
     }

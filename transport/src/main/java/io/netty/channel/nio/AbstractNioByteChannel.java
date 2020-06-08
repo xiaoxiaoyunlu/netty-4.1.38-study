@@ -46,6 +46,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             " (expected: " + StringUtil.simpleClassName(ByteBuf.class) + ", " +
             StringUtil.simpleClassName(FileRegion.class) + ')';
 
+    // 负责刷新发送缓存链表中的数据
     private final Runnable flushTask = new Runnable() {
         @Override
         public void run() {
@@ -75,6 +76,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         return false;
     }
 
+    // NioByteUnsafe 重写了 AbstractNioUnsafe 类中的读取方法
     @Override
     protected AbstractNioUnsafe newUnsafe() {
         return new NioByteUnsafe();
@@ -209,23 +211,39 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         return doWriteInternal(in, in.current());
     }
 
+    // 发送消息
+    //如果从 ChannelOutboundBuffer 中获取的消息不可读，返回0，不计入循环发送的次数
+    //如果调用 doWriteBytes 发送消息，只要发送的消息字节数大于0，就计入一次循环发送次数
+    //如果调用 doWriteBytes 发送消息，发送的字节数为0，则返回一个WRITE_STATUS_SNDBUF_FULL = Integer.MAX_VALUE值。
     private int doWriteInternal(ChannelOutboundBuffer in, Object msg) throws Exception {
+        // 1. 发送 ByteBuf
         if (msg instanceof ByteBuf) {
             ByteBuf buf = (ByteBuf) msg;
+            // 1.1 首先判断 buf 是否可读，如果不可读，说明该消息不可用，直接丢弃，
             if (!buf.isReadable()) {
+                // 在 ChannelOutboundBuffer 的缓存链表中删除该消息 。然后在 doWrite 继续循环发送下一条消息
                 in.remove();
                 return 0;
             }
 
+            // 2.2 到这里，肯定可读
+            //调用 doWriteBytes() 方法发送消息，直接写到 Socket 中发送出去，并且返回发送的字节数
             final int localFlushedAmount = doWriteBytes(buf);
+            //如果发送的字节数大于0，
             if (localFlushedAmount > 0) {
+                //则调用 in.progress() 更新消息发送的进度
                 in.progress(localFlushedAmount);
+            //判断当前的 buf 中的数据是否已经全部发送完成，
+                // 如果完成则从 ChannelOutboundBuffer 缓存链表中删除该消息。
                 if (!buf.isReadable()) {
                     in.remove();
                 }
                 return 1;
             }
-        } else if (msg instanceof FileRegion) {
+            // 到这里，肯定是 发送的字节数为0，并且没有直接返回，到最后return Integer.MAX_VALUE
+        }
+        // 2. 处理  FileRegion
+        else if (msg instanceof FileRegion) {
             FileRegion region = (FileRegion) msg;
             if (region.transferred() >= region.count()) {
                 in.remove();
@@ -240,27 +258,42 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 }
                 return 1;
             }
-        } else {
+        }
+        // 3  不支持其他类型
+        else {
             // Should not reach here.
             throw new Error();
         }
+
+
+        //一般只有当前 Socket 缓冲区写满了，无法再继续发送数据的时候才会返回0（Socket 的Buffer已满）。
+        // 如果继续循环发送也还是无法写入的，这时只见返回一个比较大值，会直接退出循环发送的，稍后再尝试写入
+
         return WRITE_STATUS_SNDBUF_FULL;
     }
 
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
+        // 获取循环发送的次数
         int writeSpinCount = config().getWriteSpinCount();
         do {
+            // 获取写缓存链表中第一条要写入的数据
             Object msg = in.current();
             if (msg == null) {
+                // 如果没有要写入的数据，取消注册到 selector 上的 OP_WRITE 事件。
                 // Wrote all messages.
                 clearOpWrite();
                 // Directly return here so incompleteWrite(...) is not called.
                 return;
             }
+            // 写入消息
+            // 如果返回的是 Integer.MAX_VALUE, 则 writeSpinCount = writeSpinCount - Integer.MAX_VALUE
+            // 肯定是 负数，直接退出循环
             writeSpinCount -= doWriteInternal(in, msg);
-        } while (writeSpinCount > 0);
 
+        } while (writeSpinCount > 0);
+        // 如果未发送完成则在 selector 上注册 OP_WRITE 事件。
+        // 如果发送完成则在 selector 上取消 OP_WRITE 事件。
         incompleteWrite(writeSpinCount < 0);
     }
 
@@ -283,17 +316,29 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 "unsupported message type: " + StringUtil.simpleClassName(msg) + EXPECTED_TYPES);
     }
 
+    // 处理 写完成 逻辑
+    // setOpWrite = writeSpinCount < 0
+    // 什么时候 writeSpinCount < 0 呢，发送的字节数为0，
+    // 则返回一个WRITE_STATUS_SNDBUF_FULL = Integer.MAX_VALUE值。Socket 的 Buffer 已经写满，无法再继续发送数据。
+    //这说明该消息还未写完，然后调用 setOpWrite() 方法，在 Selector 上注册写标识
+
     protected final void incompleteWrite(boolean setOpWrite) {
         // Did not write completely.
         if (setOpWrite) {
+            // 在 Selector 上注册写标识
             setOpWrite();
-        } else {
+        }
+        // 如果写完，则清除 Selector 上注册的写标识。稍后再刷新计划，以便同时处理其他任务
+        else {
             // It is possible that we have set the write OP, woken up by NIO because the socket is writable, and then
             // use our write quantum. In this case we no longer want to set the write OP because the socket is still
             // writable (as far as we know). We will find out next time we attempt to write if the socket is writable
             // and set the write OP if necessary.
+            // 清除 写 标识
             clearOpWrite();
 
+            // 异步刷数据到 socket
+            // netty的 writeAndFlush  所以  先 write  再  flush
             // Schedule flush again later so other tasks can be picked up in the meantime
             eventLoop().execute(flushTask);
         }
@@ -328,11 +373,13 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             return;
         }
         final int interestOps = key.interestOps();
+        //说明 不是  写 事件
         if ((interestOps & SelectionKey.OP_WRITE) == 0) {
             key.interestOps(interestOps | SelectionKey.OP_WRITE);
         }
     }
 
+    // 没有消息要写的时候 ，清除 Selector上的 write 标识
     protected final void clearOpWrite() {
         final SelectionKey key = selectionKey();
         // Check first if the key is still valid as it may be canceled as part of the deregistration
@@ -342,7 +389,11 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             return;
         }
         final int interestOps = key.interestOps();
+        //  如果还是写标识，就 清除 不是当然不管了
         if ((interestOps & SelectionKey.OP_WRITE) != 0) {
+            // 清除  SelectionKey.OP_WRITE  == 4
+            //   ~ 4 =  -5  =  1011
+            // interestOps & ~SelectionKey.OP_WRITE  ==  0
             key.interestOps(interestOps & ~SelectionKey.OP_WRITE);
         }
     }

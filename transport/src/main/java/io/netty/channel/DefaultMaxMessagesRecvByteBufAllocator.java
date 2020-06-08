@@ -86,6 +86,7 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
      */
     public abstract class MaxMessageHandle implements ExtendedHandle {
         private ChannelConfig config;
+        // 每次读取最大的消息数
         private int maxMessagePerRead;
         private int totalMessages;
         private int totalBytesRead;
@@ -137,6 +138,13 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
             return continueReading(defaultMaybeMoreSupplier);
         }
 
+
+        // 默认情况下 config.isAutoRead() 为true
+        // respectMaybeMoreData 默认为 true
+        // maybeMoreDataSupplier.get() 为false
+        // totalMessages第一次循环则为1
+        // maxMessagePerRead为16
+        // 结果返回false
         @Override
         public boolean continueReading(UncheckedBooleanSupplier maybeMoreDataSupplier) {
             return config.isAutoRead() &&

@@ -378,6 +378,9 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     /**
      * the {@link ChannelHandler} to use for serving the requests.
      */
+    // 客户端是 NioSocketChannel----链接服务端
+    // 服务端是  NioServerSocketChannel ---- 接受客户端的链接请求
+    // 都是初始化的时候 执行
     public B handler(ChannelHandler handler) {
         this.handler = ObjectUtil.checkNotNull(handler, "handler");
         return self();

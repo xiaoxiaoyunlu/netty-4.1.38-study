@@ -101,8 +101,10 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         this.name = ObjectUtil.checkNotNull(name, "name");
         this.pipeline = pipeline;
         this.executor = executor;
+        // 根据 ChannelInboundHandler 和  ChannelInboundHandler 类型 来来标记能够处理的时间和流向
         this.executionMask = mask(handlerClass);
         // Its ordered if its driven by the EventLoop or the given Executor is an instanceof OrderedEventExecutor.
+        // 顺序处理
         ordered = executor == null || executor instanceof OrderedEventExecutor;
     }
 
@@ -143,6 +145,10 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return this;
     }
 
+    //这个代码会从 `head` 开始遍历 `Pipeline` 的双向链表，然后找到第一个属性` inbound `为 `true `的
+    //`ChannelHandlerContext` 实例 ，`ChannelInitializer` 实现了` ChannelInboudHandler`，因此它所对应
+    //的 `ChannelHandlerContext` 的` inbound `属性就是 `true`，
+    // 因此这里返回就是 `ChannelInitializer `实例所对应的`ChannelHandlerContext `对象
     static void invokeChannelRegistered(final AbstractChannelHandlerContext next) {
         //  EventLoop
         EventExecutor executor = next.executor();
@@ -487,7 +493,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             return promise;
         }
 
-        // 获取bind对应的 ChannelHandlerContext
+        // ChannelOutboundHandler的 ChannelHandlerContext 主要是 bind
         final AbstractChannelHandlerContext next = findContextOutbound(MASK_BIND);
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
@@ -539,6 +545,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         final AbstractChannelHandlerContext next = findContextOutbound(MASK_CONNECT);
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+            // 客户端  connect入口
             next.invokeConnect(remoteAddress, localAddress, promise);
         } else {
             safeExecute(executor, new Runnable() {
@@ -554,6 +561,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private void invokeConnect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise) {
         if (invokeHandler()) {
             try {
+                //其实调用的是 HeadContext.connect();
                 ((ChannelOutboundHandler) handler()).connect(this, remoteAddress, localAddress, promise);
             } catch (Throwable t) {
                 notifyOutboundHandlerException(t, promise);
@@ -931,6 +939,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         return ctx;
     }
 
+    // 从 tail 开始，查找第一个类型为outhound的AbstractChannelHandlerContext
     private AbstractChannelHandlerContext findContextOutbound(int mask) {
         AbstractChannelHandlerContext ctx = this;
         do {

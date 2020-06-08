@@ -125,6 +125,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     /**
      * Set the {@link ChannelHandler} which is used to serve the request for the {@link Channel}'s.
      */
+    //  childHandler 就是负责和客户端连接的 IO 交互
     public ServerBootstrap childHandler(ChannelHandler childHandler) {
         this.childHandler = ObjectUtil.checkNotNull(childHandler, "childHandler");
         return this;
@@ -136,7 +137,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     // 所以设置这些参数的时候，必须要加锁控制
     @Override
     void init(Channel channel) throws Exception {
-        // 处理 ChannelOption
+        // 获取启动器 启动时配置的option参数，主要是TCP的一些属性
         final Map<ChannelOption<?>, Object> options = options0();
         // 注意，同步方法
         synchronized (options) {
@@ -145,10 +146,11 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             setChannelOptions(channel, options, logger);
         }
 
-        //处理 AttributeKey
+        //处理 AttributeKey  获取 ServerBootstrap 启动时配置的 attr 参数
         // AbstractBootStrap.attr();
         final Map<AttributeKey<?>, Object> attrs = attrs0();
         synchronized (attrs) {
+            // 配置 Channel attr，主要是设置用户自定义的一些参数
             for (Entry<AttributeKey<?>, Object> e: attrs.entrySet()) {
                 @SuppressWarnings("unchecked")
                 AttributeKey<Object> key = (AttributeKey<Object>) e.getKey();
@@ -157,20 +159,22 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 channel.attr(key).set(e.getValue());
             }
         }
-        // 处理 ChannelPiple
+        // 获取channel中的 pipeline，这个pipeline使我们前面在channel创建过程中设置的 pipeline
         ChannelPipeline p = channel.pipeline();
-
+        // 将启动器中配置的 childGroup 保存到局部变量 currentChildGroup
         final EventLoopGroup currentChildGroup = childGroup;
-        // 获取当前ServerBootStrap里面的ChannelHandler
+        // 将启动器中配置的 childHandler 保存到局部变量 currentChildHandler
         final ChannelHandler currentChildHandler = childHandler;
         // 获取当前ServerBootStrap里面的ChannelOption
         final Entry<ChannelOption<?>, Object>[] currentChildOptions;
         // 获取当前ServerBootStrap里面的AttributeKey
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs;
         synchronized (childOptions) {
+            // 保存用户设置的 childOptions 到局部变量 currentChildOptions
             currentChildOptions = childOptions.entrySet().toArray(newOptionArray(0));
         }
         synchronized (childAttrs) {
+            // 保存用户设置的 childAttrs 到局部变量 currentChildAttrs
             currentChildAttrs = childAttrs.entrySet().toArray(newAttrArray(0));
         }
 
@@ -178,6 +182,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             @Override
             public void initChannel(final Channel ch) throws Exception {
                 final ChannelPipeline pipeline = ch.pipeline();
+
+                // 里面调用的是 ServerBootstrap.handler()
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
                     pipeline.addLast(handler);
@@ -189,6 +195,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
+                        // 用child相关的参数创建出一个新连接接入器ServerBootstrapAcceptor
                         pipeline.addLast(new ServerBootstrapAcceptor(
                                 ch, currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs));
                     }
@@ -222,10 +229,13 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     // 其实就是 Server 端的  handler
     private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
-
+        // 子EventLoopGroup，即为workGroup
         private final EventLoopGroup childGroup;
+        // ServerBootstrap启动时配置的 childHandler
         private final ChannelHandler childHandler;
+        // ServerBootstrap启动时配置的 childOptions
         private final Entry<ChannelOption<?>, Object>[] childOptions;
+        // ServerBootstrap启动时配置的 childAttrs
         private final Entry<AttributeKey<?>, Object>[] childAttrs;
         private final Runnable enableAutoReadTask;
 

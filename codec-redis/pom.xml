@@ -53,6 +53,11 @@
       <artifactId>netty-codec</artifactId>
       <version>${project.version}</version>
     </dependency>
+      <dependency>
+          <groupId>io.netty</groupId>
+          <artifactId>netty-all</artifactId>
+          <version>4.1.11.Final</version>
+      </dependency>
   </dependencies>
 
 </project>

@@ -76,11 +76,14 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
 
+        // `EventExecutor`是个接口，`EventLoop` 是其中一个实现
+        // 理解为 EventLoop 数组
         children = new EventExecutor[nThreads];
-
+        // 初始化 EventLoop 数组
         for (int i = 0; i < nThreads; i ++) {
             boolean success = false;
             try {
+                // new Child 其实就是 EventLoop
                 children[i] = newChild(executor, args);
                 success = true;
             } catch (Exception e) {
@@ -108,6 +111,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         }
 
+        // 选择对应的调度器，肯定会重写选择方法 next();
         chooser = chooserFactory.newChooser(children);
 
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {

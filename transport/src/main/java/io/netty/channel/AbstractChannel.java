@@ -454,6 +454,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             return remoteAddress0();
         }
 
+        // 注册NioSocketChannel
+        // eventLoop为childGroup
         @Override
         public final void register(EventLoop eventLoop, final ChannelPromise promise) {
             if (eventLoop == null) {
@@ -468,7 +470,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         new IllegalStateException("incompatible event loop type: " + eventLoop.getClass().getName()));
                 return;
             }
-            //先绑定一个EventLoop
+            // 绑定eventLoop到NioSocketChannel上
             AbstractChannel.this.eventLoop = eventLoop;
             // 判断是否是当前线程持有的EventLoop，是的话，就直接register
             if (eventLoop.inEventLoop()) {
@@ -504,6 +506,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 //是否从未被注册 也就是第一次注册
                 boolean firstRegistration = neverRegistered;
                 // 真正入口  注册  AbstractNioChannel
+                // 这里注册的是 ChannelInitializer
                 doRegister();
                 neverRegistered = false;
                 registered = true;
@@ -514,17 +517,25 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
                 safeSetSuccess(promise);
                 // 触发注册事件
+                // 这里才是去真正注册 ChannelInitializer 里面 添加的 自定义handler
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
+                // 服务端的NioServerSocketChannel已经与客户端的NioSocketChannel建立了连接
+                // 所以，NioSocketChannel是处于激活状态，isActive()返回ture
                 if (isActive()) {
+                    // 对于新连接，是第一次注册
                     if (firstRegistration) {
+                        // 传播ChannelActive事件
                         pipeline.fireChannelActive();
-                    } else if (config().isAutoRead()) {
+                    }
+                    // 如果设置了自动read, 则开始read 数据
+                    else if (config().isAutoRead()) {
                         // This channel was registered before and autoRead() is set. This means we need to begin read
                         // again so that we process inbound data.
                         //
                         // See https://github.com/netty/netty/issues/4805
+                        // 如果设置了自动read, 则开始read 数据
                         beginRead();
                     }
                 }
@@ -847,6 +858,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             });
         }
 
+
+        // read 消息
         @Override
         public final void beginRead() {
             assertEventLoop();
@@ -856,6 +869,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             try {
+                // AbstractNioChannel
                 doBeginRead();
             } catch (final Exception e) {
                 invokeLater(new Runnable() {

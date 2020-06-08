@@ -136,6 +136,8 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         //注意无论什么版本，这里的javaChannel()返回的是底层的java nio  ServerSocketChannel
         if (PlatformDependent.javaVersion() >= 7) {
             //调用的是`ServerSocketChannelImpl.bind()`，是底层操作系统层面的操作
+            // 其实调用的是 java.net.ServerSocket.isBound()判断服务端监听端口是否处理绑定状态
+            // 服务端在进行端口绑定的时候，可以指定 backlog,也就是允许客户端排队的最大长度
             javaChannel().bind(localAddress, config.getBacklog());
         } else {
             //也是走的底层`ServerSocketChannelImpl`,不过是先获取的`ServerSocket`在`bind()`
@@ -151,12 +153,15 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         javaChannel().close();
     }
 
+    // 客户端连接的时候（SelectionKey.OP_ACCEPT），会调用
     @Override
     protected int doReadMessages(List<Object> buf) throws Exception {
+        // 获取 客户端链接的 SocketChannel
         SocketChannel ch = SocketUtils.accept(javaChannel());
 
         try {
             if (ch != null) {
+                // 包装成 Netty 的NioSocketChannel 将其存入buf list中
                 buf.add(new NioSocketChannel(this, ch));
                 return 1;
             }
@@ -195,6 +200,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         throw new UnsupportedOperationException();
     }
 
+    //server 应该没有write操作才对，因为server是一对多处理，不知道发给那一个clinet
     @Override
     protected boolean doWriteMessage(Object msg, ChannelOutboundBuffer in) throws Exception {
         throw new UnsupportedOperationException();
