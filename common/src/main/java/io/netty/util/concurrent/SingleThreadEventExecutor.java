@@ -82,6 +82,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private final Queue<Runnable> taskQueue;
 
+    // 关联的本地线程，所以，NioEventLoop就是绑定单个线程的线程池
     private volatile Thread thread;
     @SuppressWarnings("unused")
     private volatile ThreadProperties threadProperties;
@@ -934,6 +935,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    // 实际调用的是 NioEventLoop.run()方法
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {

@@ -127,6 +127,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private final SelectStrategy selectStrategy;
 
+    //IO事件与非IO任务 比例
     private volatile int ioRatio = 50;
     private int cancelledKeys;
     private boolean needsToSelectAgain;
@@ -172,6 +173,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+
+    // 获取 选择器
     private SelectorTuple openSelector() {
         final Selector unwrappedSelector;
         try {
@@ -180,14 +183,18 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             throw new ChannelException("failed to open a new selector", e);
         }
 
+        // 没有优化？
         if (DISABLE_KEY_SET_OPTIMIZATION) {
             return new SelectorTuple(unwrappedSelector);
         }
 
+        // 说明，下面是优化的代码
+       // 这个优化，默认是不开启的，需要用户通过io.netty.noKeySetOptimization开关来启用
         Object maybeSelectorImplClass = AccessController.doPrivileged(new PrivilegedAction<Object>() {
             @Override
             public Object run() {
                 try {
+                    // 反射获取 Selector
                     return Class.forName(
                             "sun.nio.ch.SelectorImpl",
                             false,
@@ -197,6 +204,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 }
             }
         });
+
 
         if (!(maybeSelectorImplClass instanceof Class) ||
             // ensure the current selector implementation is what we can instrument.
@@ -208,6 +216,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             return new SelectorTuple(unwrappedSelector);
         }
 
+        // 优化代码细节
         final Class<?> selectorImplClass = (Class<?>) maybeSelectorImplClass;
         final SelectedSelectionKeySet selectedKeySet = new SelectedSelectionKeySet();
 
@@ -507,14 +516,19 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 cancelledKeys = 0;
                 needsToSelectAgain = false;
                 final int ioRatio = this.ioRatio;
+
+                // 全部是IO事件？
                 if (ioRatio == 100) {
                     try {
                         processSelectedKeys();
                     } finally {
                         // Ensure we always run tasks.
+                        // 执行系统Task
                         runAllTasks();
                     }
-                } else {
+                }
+                // 比例不是 100.则 肯定有 IO事件和  非IO事件 也就是定时任务
+                else {
                     final long ioStartTime = System.nanoTime();
                     try {
                         processSelectedKeys();
@@ -553,10 +567,13 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    // 其实是在这里做了优化，
     private void processSelectedKeys() {
         if (selectedKeys != null) {
+            // 走优化逻辑
             processSelectedKeysOptimized();
         } else {
+            // 正常逻辑
             processSelectedKeysPlain(selector.selectedKeys());
         }
     }
